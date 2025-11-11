@@ -1,7 +1,6 @@
 import pandas as pd
 
 def summarize_budget(df):
-    # df has columns: category, amount
     return df.groupby("category")["amount"].sum()
 
 def run_from_csv(path="data.csv"):

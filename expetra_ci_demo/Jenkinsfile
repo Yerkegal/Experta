@@ -1,0 +1,41 @@
+pipeline {
+  agent any
+
+  environment {
+    DOCKER_IMAGE = "<YOUR_DOCKERHUB_USERNAME>/expetra-ci-demo"
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        // Jenkins reads this from GitHub; change to your real repo URL
+        git url: 'https://github.com/<YOUR_GITHUB_USERNAME>/expetra-ci-demo.git', branch: 'main'
+      }
+    }
+
+    stage('Install & Test') {
+      steps {
+        sh 'python -m pip install -r requirements.txt'
+        sh 'pytest -q'
+      }
+    }
+
+    stage('Build Docker Image') {
+      steps {
+        sh "docker build -t ${env.DOCKER_IMAGE}:$BUILD_NUMBER ."
+      }
+    }
+
+    stage('Push to Docker Hub') {
+      when { branch 'main' }
+      steps {
+        withCredentials([string(credentialsId: 'dockerhub-pass', variable: 'DOCKER_PASS')]) {
+          sh 'echo $DOCKER_PASS | docker login -u <YOUR_DOCKERHUB_USERNAME> --password-stdin'
+          sh "docker tag ${env.DOCKER_IMAGE}:$BUILD_NUMBER ${env.DOCKER_IMAGE}:latest"
+          sh "docker push ${env.DOCKER_IMAGE}:$BUILD_NUMBER"
+          sh "docker push ${env.DOCKER_IMAGE}:latest"
+        }
+      }
+    }
+  }
+}

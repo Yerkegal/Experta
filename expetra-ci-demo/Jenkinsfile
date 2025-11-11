@@ -1,29 +1,67 @@
 pipeline {
   agent any
-  environment { DOCKER_IMAGE = "<YOUR_DOCKERHUB_USERNAME>/expetra-ci-demo" }
+
+  environment {
+    // CHANGE THIS if your Docker Hub org/name is different:
+    DOCKER_IMAGE = "yerkegal/experta"
+    PROJECT_DIR  = "expetra-ci-demo"   // where your Python code & tests live
+  }
+
+  options {
+    timestamps()
+  }
+
   stages {
     stage('Checkout') {
-      steps { git url: 'https://github.com/<YOUR_GITHUB_USERNAME>/expetra-ci-demo.git', branch: 'main' }
-    }
-    stage('Install & Test') {
       steps {
-        sh 'python -m pip install -r requirements.txt'
-        sh 'pytest -q'
+        // Your repo is PRIVATE. Either:
+        // 1) Make it public, and remove 'credentialsId', OR
+        // 2) Keep it private and create a Jenkins credential with ID 'github-token'
+        //    (Kind: Secret text; value: GitHub Personal Access Token with 'repo' scope)
+        git branch: 'main',
+            url: 'https://github.com/Yerkegal/Experta.git',
+            credentialsId: 'github-token'
       }
     }
-    stage('Build Docker Image') {
-      steps { sh "docker build -t ${env.DOCKER_IMAGE}:$BUILD_NUMBER ." }
+
+    stage('Install & Test') {
+      steps {
+        dir("${PROJECT_DIR}") {
+          sh 'python -m pip install -r requirements.txt'
+          // ensure imports work if package is a plain folder:
+          sh 'PYTHONPATH=. pytest -q'
+        }
+      }
     }
+
+    stage('Build Docker image') {
+      steps {
+        // Build from repository root (context ".").
+        // Ensure your Dockerfile is at the repo root. If it is inside expetra-ci-demo/,
+        // change "." to "${PROJECT_DIR}"
+        sh "docker build -t ${DOCKER_IMAGE}:${BUILD_NUMBER} ."
+      }
+    }
+
     stage('Push to Docker Hub') {
       when { branch 'main' }
       steps {
         withCredentials([string(credentialsId: 'dockerhub-pass', variable: 'DOCKER_PASS')]) {
-          sh 'echo $DOCKER_PASS | docker login -u <YOUR_DOCKERHUB_USERNAME> --password-stdin'
-          sh "docker tag ${env.DOCKER_IMAGE}:$BUILD_NUMBER ${env.DOCKER_IMAGE}:latest"
-          sh "docker push ${env.DOCKER_IMAGE}:$BUILD_NUMBER"
-          sh "docker push ${env.DOCKER_IMAGE}:latest"
+          sh 'echo $DOCKER_PASS | docker login -u yerkegal --password-stdin'
+          sh "docker tag ${DOCKER_IMAGE}:${BUILD_NUMBER} ${DOCKER_IMAGE}:latest"
+          sh "docker push ${DOCKER_IMAGE}:${BUILD_NUMBER}"
+          sh "docker push ${DOCKER_IMAGE}:latest"
         }
       }
+    }
+  }
+
+  post {
+    success {
+      echo "Build ${env.BUILD_NUMBER} pushed as ${env.DOCKER_IMAGE}:latest"
+    }
+    failure {
+      echo "Build failed. Check console output for details."
     }
   }
 }
